@@ -1,152 +1,68 @@
-# Inspired heavily by the following workflows
-# https://github.com/arichornlover/uYouEnhanced/blob/main/.github/workflows/buildapp.yml
-# https://github.com/ISnackable/YTCubePlus/blob/main/.github/workflows/Build.yml
-# https://github.com/BandarHL/BHTwitter/actions/workflows/build.yml
-
-name: Build and Package SCInsta
-
+name: Build minimal Reels blocker
 on:
-    workflow_dispatch:
-        inputs:
-            decrypted_instagram_url:
-                description: "The direct URL to the decrypted Instagram IPA"
-                default: ""
-                required: true
-                type: string
-            upload_artifact:
-                description: "Upload Artifact"
-                default: true
-                required: false
-                type: boolean
-  
+  workflow_dispatch:
+    inputs:
+      decrypted_instagram_url:
+        description: "Instagram 418.2.0 IPA matching the pinned SHA-256"
+        required: true
+        type: string
 concurrency:
-    group: ${{ github.workflow }}-${{ github.ref }}
-    cancel-in-progress: true
+  group: reels-only-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
-    build:
-        name: Build SCInsta
-        runs-on: macos-latest
-        permissions:
-            contents: write
-
-        steps:
-            - name: Checkout Main
-              uses: actions/checkout@v4
-              with:
-                path: main
-                submodules: recursive
-
-            - name: Install Dependencies
-              run: brew install ldid dpkg make
-
-            - name: Set PATH environment variable
-              run: echo "$(brew --prefix make)/libexec/gnubin" >> $GITHUB_PATH 
-
-            - name: Setup Theos
-              uses: actions/checkout@v4
-              with:
-                repository: theos/theos
-                ref: master
-                path: ${{ github.workspace }}/theos
-                submodules: recursive
-
-            # theos/logos master (777925d, theos/logos#114) rewrote %orig handling: it now
-            # replaces everything from %orig to end-of-line and re-appends only ";", so any
-            # %orig that is not alone on its line -- VOID_HANDLESCREENSHOT(%orig),
-            # [SCIUtils liquidGlassEnabledBool:%orig], removeItemsInList(%orig, YES) -- loses
-            # its closing bracket and the generated code no longer compiles. a623700 is the
-            # commit directly before that change; drop this step once #114 is fixed upstream.
-            - name: Pin Logos to known-good version
-              run: |
-                cd "$THEOS/vendor/logos"
-                git fetch --depth=1 origin a62370066a97e36d59b200a9fa10c5091f5e8972
-                git checkout a62370066a97e36d59b200a9fa10c5091f5e8972
-              env:
-                THEOS: ${{ github.workspace }}/theos
-        
-            - name: SDK Caching
-              id: SDK
-              uses: actions/cache@v4
-              env:
-                cache-name: iPhoneOS16.2.sdk
-              with:
-                path: ${{ github.workspace }}/theos/sdks/
-                key: ${{ env.cache-name }}
-                restore-keys: ${{ env.cache-name }}
-
-            - name: Download iOS SDK
-              if: steps.SDK.outputs.cache-hit != 'true'
-              run: |
-                git clone --quiet -n --depth=1 --filter=tree:0 https://github.com/xybp888/iOS-SDKs/
-                cd iOS-SDKs
-                git sparse-checkout set --no-cone iPhoneOS16.2.sdk
-                git checkout
-                mv *.sdk $THEOS/sdks
-              env:
-                THEOS: ${{ github.workspace }}/theos
-
-            - name: Prepare Instagram IPA
-              run: |
-                cd main
-
-                mkdir -p packages
-                wget "$Instagram_URL" --no-verbose -O packages/com.burbn.instagram.ipa
-
-                ls -la packages
-                
-              env:
-                THEOS: ${{ github.workspace }}/theos
-                Instagram_URL: ${{ inputs.decrypted_instagram_url }}
-
-            - name: Get SCInsta Version
-              id: scinsta_version
-              run: |
-                SCINSTA_VERSION=$(awk '/Version:/ {print $2}' main/control)
-
-                echo "SCINSTA_VERSION=${SCINSTA_VERSION}" >> "$GITHUB_ENV"
-                echo "version=${SCINSTA_VERSION}" >> "$GITHUB_OUTPUT"
-            
-            - name: Build SCInsta tweak for sideloading (as IPA)
-              run: |
-                pip install --force-reinstall https://github.com/asdfzxcvbn/pyzule-rw/archive/main.zip
-                
-                cd main
-                curl -Lo ipapatch https://github.com/asdfzxcvbn/ipapatch/releases/download/v2.1.3/ipapatch.macos-arm64
-                chmod +x ipapatch
-                export PATH=.:$PATH
-                ls -la
-
-                ./build.sh sideload
-                ls -la packages
-                
-              env:
-                THEOS: ${{ github.workspace }}/theos
-
-            - name: Rename IPA to include version info
-              run: |
-                cd main/packages
-                mv "$(ls -t | head -n1)" "SCInsta_sideloaded_v${SCINSTA_VERSION}.ipa"
-
-            - name: Pass package name to upload action
-              id: package_name
-              run: |
-                echo "package=$(ls -t main/packages |  head -n1)" >> "$GITHUB_OUTPUT"
-
-            - name: Upload Artifact
-              if: ${{ inputs.upload_artifact }}
-              uses: actions/upload-artifact@v4
-              with:
-                name: SCInsta_sideloaded_v${{ steps.scinsta_version.outputs.version }}
-                path: ${{ github.workspace }}/main/packages/${{ steps.package_name.outputs.package }}
-                if-no-files-found: error
-
-            - name: Create Release
-              uses: softprops/action-gh-release@v2.0.6
-              with:
-                name: SCInsta_sideloaded_v${{ steps.scinsta_version.outputs.version }}
-                files: ${{ github.workspace }}/main/packages/SCInsta_sideloaded_v*.ipa
-                draft: true
-
-            - name: Output Release URL
-              run: |
-                echo "::notice::Release available at: https://github.com/${{ github.repository }}/releases"
+  build:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test restrictions against mock classes
+        run: |
+          xcrun clang -fobjc-arc -O2 -Wall -Wextra -Werror -Wno-unused-parameter \
+            -framework Foundation reels-only/tests.m -o "$RUNNER_TEMP/reels-tests"
+          "$RUNNER_TEMP/reels-tests"
+      - name: Download and verify original Instagram IPA
+        env:
+          INSTAGRAM_URL: ${{ inputs.decrypted_instagram_url }}
+        run: |
+          mkdir -p packages
+          curl --fail --location "$INSTAGRAM_URL" -o packages/Instagram.ipa
+          python3 - <<'PY'
+          import hashlib
+          from pathlib import Path
+          assert hashlib.sha256(Path('packages/Instagram.ipa').read_bytes()).hexdigest() == '28577f6827a2978aba118fb2a99bf56ea9436001cf4c7829cf301fb0ac1ca39b', 'Source IPA changed'
+          PY
+      - name: Compile only the blocker with Apple frameworks
+        run: |
+          xcrun --sdk iphoneos clang -target arm64-apple-ios16.3 \
+            -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" \
+            -dynamiclib -fobjc-arc -O2 -Wall -Wextra -Werror -Wno-unused-parameter \
+            -framework Foundation -framework UIKit \
+            -install_name @rpath/ReelsBlocker.dylib \
+            reels-only/ReelsBlocker.m -o packages/ReelsBlocker.dylib
+          otool -L packages/ReelsBlocker.dylib
+      - name: Install pinned packaging tools on the runner
+        run: |
+          python3 -m pip install --force-reinstall https://github.com/asdfzxcvbn/pyzule-rw/archive/740d3716dcd98c20c000f12cdb88f1f0b2a533a4.zip
+          curl --fail --location https://github.com/asdfzxcvbn/ipapatch/releases/download/v2.1.3/ipapatch.macos-arm64 -o "$RUNNER_TEMP/ipapatch"
+          python3 - <<'PY'
+          import hashlib, os
+          from pathlib import Path
+          assert hashlib.sha256((Path(os.environ['RUNNER_TEMP'])/'ipapatch').read_bytes()).hexdigest() == '05df2e7310b041891892cf152ce6bbd93574880bf147b96d775051fad796737f', 'ipapatch changed'
+          PY
+          chmod +x "$RUNNER_TEMP/ipapatch"
+      - name: Package and verify
+        run: |
+          cyan -i packages/Instagram.ipa -o packages/Instagram_ReelsOnly_418.2.0_v1.ipa \
+            -f packages/ReelsBlocker.dylib -c 9 -du
+          "$RUNNER_TEMP/ipapatch" --input packages/Instagram_ReelsOnly_418.2.0_v1.ipa --inplace --noconfirm
+          python3 reels-only/verify.py packages/Instagram_ReelsOnly_418.2.0_v1.ipa packages/Instagram.ipa > packages/verification.json
+          cat packages/verification.json
+      - name: Save a separate draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "reels-only-v1-${GITHUB_RUN_ID}" --draft --target "$GITHUB_SHA" \
+            --title "Instagram Reels-only v1" \
+            --notes "Minimal Reels blocker. No SCInsta, FLEX or CydiaSubstrate. Static checks and mock tests passed; device testing and malware assessment are separate." \
+            packages/Instagram_ReelsOnly_418.2.0_v1.ipa packages/ReelsBlocker.dylib packages/verification.json
