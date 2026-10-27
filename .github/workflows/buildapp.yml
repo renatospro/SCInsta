@@ -56,7 +56,7 @@ jobs:
       - name: Package and verify
         run: |
           cyan -i packages/Instagram.ipa -o packages/Instagram_ReelsOnly_418.2.0_v1.ipa \
-            -f packages/ReelsBlocker.dylib -c 9 -du
+            -f packages/ReelsBlocker.dylib -c 9
           "$RUNNER_TEMP/ipapatch" --input packages/Instagram_ReelsOnly_418.2.0_v1.ipa --inplace --noconfirm
           python3 reels-only/verify.py packages/Instagram_ReelsOnly_418.2.0_v1.ipa packages/Instagram.ipa > packages/verification.json
           cat packages/verification.json

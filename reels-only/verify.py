@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Static package checks, not an antivirus or device functionality test."""
-import hashlib, json, struct, sys, zipfile
+import hashlib, json, plistlib, struct, sys, zipfile
 root = "Payload/Instagram.app/"
 blocker = root + "Frameworks/ReelsBlocker.dylib"
 helper = root + "Frameworks/zxPluginsInject.dylib"
@@ -25,7 +25,13 @@ with zipfile.ZipFile(sys.argv[1]) as package, zipfile.ZipFile(sys.argv[2]) as ba
     originals = {i.filename for i in base.infolist() if not i.is_dir()}
     added = names - originals
     assert added == {blocker, helper, root + "cyan.entitlements"}, f"Unexpected additions: {added}"
-    assert not originals - names, "Unexpected removed original files"
+    removed = originals - names
+    # cyan drops the App Store artwork at the archive root during repackaging.
+    assert removed <= {"iTunesArtwork"}, f"Unexpected removed original files: {removed}"
+    before = plistlib.loads(base.read(root + "Info.plist"))
+    after = plistlib.loads(package.read(root + "Info.plist"))
+    for key in ("UIFileSharingEnabled", "LSSupportsOpeningDocumentsInPlace"):
+        assert before.get(key) == after.get(key), f"Unrequested file access change: {key}"
     binaries = []
     for name in sorted(names):
         assert not any(marker.decode() in name.lower() for marker in forbidden), name
@@ -43,6 +49,6 @@ with zipfile.ZipFile(sys.argv[1]) as package, zipfile.ZipFile(sys.argv[2]) as ba
         assert marker in data, f"Missing restriction: {marker}"
     assert digest(package.read(helper)) == "cd903ea15657cbd356398adcb60c8872c41c29b69acc1a5dfb78a49d6e75dea5", "Sideload helper changed"
     changed = [n for n in sorted(names & originals) if digest(package.read(n)) != digest(base.read(n))]
-    result = dict(added=sorted(added), changed=changed, blocker_dependencies=loads, binaries=binaries,
+    result = dict(added=sorted(added), removed=sorted(removed), changed=changed, blocker_dependencies=loads, binaries=binaries,
                   forbidden_components_present=False, scope="Static verification, not a malware-free or runtime guarantee")
 print(json.dumps(result, indent=2))
