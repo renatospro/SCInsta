@@ -11,6 +11,7 @@
 static IMP originalLayout, originalButton, originalSurfaces, originalFeed;
 static IMP originalMove, originalScroll, originalAutoScroll;
 static IMP originalStoryTray;
+static IMP originalScrollStatus, originalAutoStatus;
 
 static NSString *const RBScrollKey = @"local.reelsblocker.blockScroll";
 static NSString *const RBFeedKey = @"local.reelsblocker.hideHomeFeed";
@@ -27,8 +28,18 @@ static void RBRegisterDefaults(void) {
 
 static BOOL RBEnabled(NSString *key) { return [RBDefaults() boolForKey:key]; }
 
-static BOOL RBIsKind(id object, const char *name) {
+static Class RBClass(const char *name) {
     Class cls = objc_getClass(name);
+    if (cls) return cls;
+    // Names and signatures confirmed in the 451.0.0 Objective-C metadata.
+    if (!strcmp(name, "IGMainStoryTrayDataSource")) return objc_getClass("_TtC25IGMainStoryTrayDataSource25IGMainStoryTrayDataSource");
+    if (!strcmp(name, "IGSundialFeedDataSource")) return objc_getClass("_TtC23IGSundialFeedDataSource23IGSundialFeedDataSource");
+    if (!strcmp(name, "IGInFeedStoriesTrayModel")) return objc_getClass("_TtC15IGInFeedStories24IGInFeedStoriesTrayModel");
+    return Nil;
+}
+
+static BOOL RBIsKind(id object, const char *name) {
+    Class cls = RBClass(name);
     return cls && [object isKindOfClass:cls];
 }
 
@@ -117,6 +128,14 @@ static void RBAutoScroll(id self, SEL command, BOOL enabled) {
     ((void (*)(id, SEL, BOOL))originalAutoScroll)(self, command, RBEnabled(RBScrollKey) ? NO : enabled);
 }
 
+static BOOL RBScrollStatus(id self, SEL command) {
+    return RBEnabled(RBScrollKey) ? NO : ((BOOL (*)(id, SEL))originalScrollStatus)(self, command);
+}
+
+static BOOL RBAutoStatus(id self, SEL command) {
+    return RBEnabled(RBScrollKey) ? NO : ((BOOL (*)(id, SEL))originalAutoStatus)(self, command);
+}
+
 static BOOL RBTypeMatches(char *actual, const char *expected) {
     BOOL matches = actual && strcmp(actual, expected) == 0;
     free(actual);
@@ -126,7 +145,7 @@ static BOOL RBTypeMatches(char *actual, const char *expected) {
 static void RBHook(const char *className, const char *selectorName, IMP replacement,
                    IMP *original, const char *result, NSArray<NSString *> *arguments) {
     if (*original) return; // A launch notification can retry missing classes safely.
-    Class cls = objc_getClass(className);
+    Class cls = RBClass(className);
     SEL selector = sel_registerName(selectorName);
     Method method = cls ? class_getInstanceMethod(cls, selector) : NULL;
     if (!method || method_getNumberOfArguments(method) != arguments.count + 2) return;
@@ -151,8 +170,13 @@ static void RBInstall(void) {
     RBHook("IGMainStoryTrayDataSource", "initWithUserSession:", (IMP)RBStoryTray, &originalStoryTray, "@", @[@"@"]);
     RBHook("IGUnifiedVideoCollectionView", "didMoveToWindow", (IMP)RBMove, &originalMove, "v", @[]);
     RBHook("IGUnifiedVideoCollectionView", "setScrollEnabled:", (IMP)RBScroll, &originalScroll, "v", @[@(@encode(BOOL))]);
+    RBHook("IGUnifiedVideoCollectionView", "isScrollEnabled", (IMP)RBScrollStatus, &originalScrollStatus, @encode(BOOL), @[]);
     RBHook("_TtC19IGSundialAutoScroll19IGSundialAutoScroll", "setIsEnabled:",
            (IMP)RBAutoScroll, &originalAutoScroll, "v", @[@(@encode(BOOL))]);
+    RBHook("_TtC19IGSundialAutoScroll19IGSundialAutoScroll", "setUserEnabled:",
+           (IMP)RBAutoScroll, &originalAutoScroll, "v", @[@(@encode(BOOL))]);
+    RBHook("_TtC19IGSundialAutoScroll19IGSundialAutoScroll", "isEnabled",
+           (IMP)RBAutoStatus, &originalAutoStatus, @encode(BOOL), @[]);
 }
 
 #if !RB_TESTING

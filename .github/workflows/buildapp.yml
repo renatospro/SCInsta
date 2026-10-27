@@ -13,6 +13,9 @@ jobs:
           xcrun clang -fobjc-arc -O2 -Wall -Wextra -Werror -Wno-unused-parameter \
             -framework Foundation reels-only/tests.m -o "$RUNNER_TEMP/reels-tests"
           "$RUNNER_TEMP/reels-tests"
+          xcrun clang -fobjc-arc -O2 -Wall -Wextra -Werror -Wno-unused-parameter -DRB_NEW_API=1 \
+            -framework Foundation reels-only/tests.m -o "$RUNNER_TEMP/reels-tests-451"
+          "$RUNNER_TEMP/reels-tests-451"
       - name: Compile blocker and UIKit settings
         run: |
           mkdir -p packages

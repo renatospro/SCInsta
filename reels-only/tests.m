@@ -2,6 +2,12 @@
 #define RB_TESTING 1
 #import "ReelsBlocker.m"
 
+#if RB_NEW_API
+#define IGMainStoryTrayDataSource _TtC25IGMainStoryTrayDataSource25IGMainStoryTrayDataSource
+#define IGSundialFeedDataSource _TtC23IGSundialFeedDataSource23IGSundialFeedDataSource
+#define IGInFeedStoriesTrayModel _TtC15IGInFeedStories24IGInFeedStoriesTrayModel
+#endif
+
 @interface Surface : NSObject
 @property NSString *name;
 - (id)tabStringFromSurfaceIntent;
@@ -61,7 +67,7 @@
 @implementation IGSundialFeedDataSource @end
 
 @interface NormalScrollView : NSObject
-@property BOOL scrollEnabled;
+@property (getter=isScrollEnabled) BOOL scrollEnabled;
 @property NSUInteger moves;
 - (void)didMoveToWindow;
 @end
@@ -71,7 +77,11 @@
 @interface IGUnifiedVideoCollectionView : NormalScrollView @end
 @implementation IGUnifiedVideoCollectionView @end
 @interface _TtC19IGSundialAutoScroll19IGSundialAutoScroll : NSObject
+#if RB_NEW_API
+@property (setter=setUserEnabled:) BOOL isEnabled;
+#else
 @property BOOL isEnabled;
+#endif
 @end
 @implementation _TtC19IGSundialAutoScroll19IGSundialAutoScroll @end
 
@@ -104,7 +114,8 @@ int main(void) {
         RBInstall();
         NSCAssert(originalScroll == previous, @"Hooks must be idempotent");
         NSCAssert(originalLayout && originalSurfaces && originalButton && originalFeed &&
-                  originalStoryTray && originalMove && originalScroll && originalAutoScroll,
+                  originalStoryTray && originalMove && originalScroll && originalAutoScroll &&
+                  originalScrollStatus && originalAutoStatus,
                   @"Every expected hook must install");
 
         Surface *feed = [Surface new]; feed.name = @"FEED";
@@ -167,7 +178,7 @@ int main(void) {
         NSCAssert(!viewer.scrollEnabled, @"Unlock must not force scrolling on when Instagram disables it");
         NSCAssert([[home objectsForListAdapter:items] isEqual:items], @"All home items remain when restrictions are off");
         [RBPreferenceStore removePersistentDomainForName:suite];
-        puts("PASS: eight hooks; direct Reel data preserved, scroll locking and unlocking, independent feed/story options, creation preservation, native refresh, signature guards and idempotence");
+        puts("PASS: ten hooks; direct Reel data preserved, scroll locking and unlocking, independent feed/story options, creation preservation, native refresh, signature guards and idempotence");
     }
     return 0;
 }
