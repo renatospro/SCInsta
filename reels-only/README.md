@@ -1,4 +1,4 @@
-# Local Instagram controls — v2 (not yet packaged)
+# Local Instagram controls — v2
 
 The new behavior preserves native data and loading for individually selected Reels,
 including videos opened from messages or profiles and the account's own posts.
@@ -27,6 +27,20 @@ device before claiming this v2 works there. Mock tests validate our behavior,
 not Instagram's private interfaces, every navigation route, or subscription
 compatibility. A source-only build is not an installable IPA or an antivirus scan.
 
-Do not overwrite the pinned v1 build artifact. Package v2 only after obtaining
-and assessing a newer, unmodified decrypted base IPA, and scan the resulting
-IPA and injected components before installation.
+Do not overwrite the pinned v1 build artifact. Prefer a newer, unmodified
+decrypted base with verifiable provenance. The available 451.0.0 candidate was
+already modified with RyukGram; it is not an authenticated original base.
+
+`package_review_candidate.py` creates an **experimental, unsigned review IPA**
+from that exact hash. It removes RyukGram and its bundle, removes its
+CydiaSubstrate framework, replaces its sideload helper with the pinned helper
+from v1, and adds our v2 blocker. File sharing is disabled. Every other file is
+checked byte-for-byte against that candidate. The main binary changes only in
+the load-command/header area; its code and data remain unchanged. This proves
+the scope of our edits, not the authenticity or safety of the source. The old
+signature is invalid after these edits and must be replaced by the installer.
+
+Scan the resulting IPA and the changed executable separately before considering
+installation. This candidate has not been tested on an iPhone; successful builds,
+mock tests, symbol-string presence and antivirus scans do not prove runtime
+compatibility, subscription availability, or absence of malware.
