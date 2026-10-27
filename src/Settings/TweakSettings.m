@@ -213,7 +213,9 @@
                 [SCISetting navigationCellWithTitle:@"Debug"
                                            subtitle:@""
                                                icon:[SCISymbol symbolWithName:@"ladybug"]
-                                        navSections:@[@{
+                                        navSections:@[
+#ifndef SCI_NO_FLEX
+                                        @{
                                             @"header": @"FLEX",
                                             @"rows": @[
                                                 [SCISetting switchCellWithTitle:@"Enable FLEX gesture" subtitle:@"Allows you to hold 5 fingers on the screen to open the FLEX explorer" defaultsKey:@"flex_instagram"],
@@ -221,6 +223,7 @@
                                                 [SCISetting switchCellWithTitle:@"Open FLEX on app focus" subtitle:@"Automatically opens the FLEX explorer when the app is focused" defaultsKey:@"flex_app_start"]
                                             ]
                                         },
+#endif
                                         @{
                                             @"header": @"SCInsta",
                                             @"rows": @[

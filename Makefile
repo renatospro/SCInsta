@@ -12,11 +12,17 @@ $(TWEAK_NAME)_PRIVATE_FRAMEWORKS = Preferences
 $(TWEAK_NAME)_CFLAGS = -fobjc-arc -Wno-unsupported-availability-guard -Wno-unused-value -Wno-deprecated-declarations -Wno-nullability-completeness -Wno-unused-function -Wno-incompatible-pointer-types
 $(TWEAK_NAME)_LOGOSFLAGS = --c warnings=none
 
+ifeq ($(NO_FLEX),1)
+$(TWEAK_NAME)_CFLAGS += -DSCI_NO_FLEX=1
+endif
+
 CCFLAGS += -std=c++11
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 
 # Build FLEXing for sideloading (not building in dev-mode)
 ifdef SIDELOAD
-	$(TWEAK_NAME)_SUBPROJECTS += modules/flexing
+ifneq ($(NO_FLEX),1)
+$(TWEAK_NAME)_SUBPROJECTS += modules/flexing
+endif
 endif

@@ -77,13 +77,16 @@ BOOL dmVisualMsgsViewedButtonEnabled = false;
     NSLog(@"[SCInsta] Cleaning cache...");
     [SCIUtils cleanCache];
 
+#ifndef SCI_NO_FLEX
     if ([SCIUtils getBoolPref:@"flex_app_launch"]) {
         [[objc_getClass("FLEXManager") sharedManager] showExplorer];
     }
+#endif
 
     return true;
 }
 
+#ifndef SCI_NO_FLEX
 - (void)applicationDidBecomeActive:(id)arg1 {
     %orig;
     
@@ -91,6 +94,7 @@ BOOL dmVisualMsgsViewedButtonEnabled = false;
         [[objc_getClass("FLEXManager") sharedManager] showExplorer];
     }
 }
+#endif
 %end
 
 %hook IGDSLauncherConfig
@@ -679,6 +683,7 @@ shouldPersistLastBugReportId:(id)arg6
 /////////////////////////////////////////////////////////////////////////////
 
 // FLEX explorer gesture handler
+#ifndef SCI_NO_FLEX
 %hook IGRootViewController
 - (void)viewDidLoad {
     %orig;
@@ -697,6 +702,7 @@ shouldPersistLastBugReportId:(id)arg6
     }
 }
 %end
+#endif
 
 // Disable safe mode (defaults reset upon subsequent crashes)
 %hook IGSafeModeChecker

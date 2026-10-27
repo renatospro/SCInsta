@@ -18,6 +18,11 @@ on:
                 default: true
                 required: false
                 type: boolean
+            include_flex:
+                description: "Include the optional FLEX debugger"
+                default: true
+                required: false
+                type: boolean
   
 concurrency:
     group: ${{ github.workflow }}-${{ github.ref }}
@@ -105,6 +110,13 @@ jobs:
 
                 echo "SCINSTA_VERSION=${SCINSTA_VERSION}" >> "$GITHUB_ENV"
                 echo "version=${SCINSTA_VERSION}" >> "$GITHUB_OUTPUT"
+                if [ "$INCLUDE_FLEX" = "true" ]; then
+                    echo "PACKAGE_VARIANT=sideloaded" >> "$GITHUB_ENV"
+                else
+                    echo "PACKAGE_VARIANT=sideloaded_noflex" >> "$GITHUB_ENV"
+                fi
+              env:
+                INCLUDE_FLEX: ${{ inputs.include_flex }}
             
             - name: Build SCInsta tweak for sideloading (as IPA)
               run: |
@@ -116,16 +128,21 @@ jobs:
                 export PATH=.:$PATH
                 ls -la
 
-                ./build.sh sideload
+                if [ "$INCLUDE_FLEX" = "true" ]; then
+                    ./build.sh sideload
+                else
+                    ./build.sh sideload --no-flex
+                fi
                 ls -la packages
                 
               env:
                 THEOS: ${{ github.workspace }}/theos
+                INCLUDE_FLEX: ${{ inputs.include_flex }}
 
             - name: Rename IPA to include version info
               run: |
                 cd main/packages
-                mv "$(ls -t | head -n1)" "SCInsta_sideloaded_v${SCINSTA_VERSION}.ipa"
+                mv SCInsta-sideloaded.ipa "SCInsta_${PACKAGE_VARIANT}_v${SCINSTA_VERSION}.ipa"
 
             - name: Pass package name to upload action
               id: package_name
@@ -136,15 +153,15 @@ jobs:
               if: ${{ inputs.upload_artifact }}
               uses: actions/upload-artifact@v4
               with:
-                name: SCInsta_sideloaded_v${{ steps.scinsta_version.outputs.version }}
+                name: SCInsta_${{ env.PACKAGE_VARIANT }}_v${{ steps.scinsta_version.outputs.version }}
                 path: ${{ github.workspace }}/main/packages/${{ steps.package_name.outputs.package }}
                 if-no-files-found: error
 
             - name: Create Release
               uses: softprops/action-gh-release@v2.0.6
               with:
-                name: SCInsta_sideloaded_v${{ steps.scinsta_version.outputs.version }}
-                files: ${{ github.workspace }}/main/packages/SCInsta_sideloaded_v*.ipa
+                name: SCInsta_${{ env.PACKAGE_VARIANT }}_v${{ steps.scinsta_version.outputs.version }}
+                files: ${{ github.workspace }}/main/packages/SCInsta_${{ env.PACKAGE_VARIANT }}_v*.ipa
                 draft: true
 
             - name: Output Release URL

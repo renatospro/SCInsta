@@ -6,7 +6,7 @@ CMAKE_OSX_ARCHITECTURES="arm64e;arm64"
 CMAKE_OSX_SYSROOT="iphoneos"
 
 # Prerequisites
-if [ -z "$(ls -A modules/FLEXing)" ]; then
+if [ "$2" != "--no-flex" ] && [ -z "$(ls -A modules/FLEXing)" ]; then
     echo -e '\033[1m\033[0;31mFLEXing submodule not found.\nPlease run the following command to checkout submodules:\n\n\033[0m    git submodule update --init --recursive'
     exit 1
 fi
@@ -16,7 +16,11 @@ if [ "$1" == "sideload" ];
 then
 
     # Check if building with dev mode
-    if [ "$2" == "--dev" ];
+    if [ "$2" == "--no-flex" ]; then
+        MAKEARGS='SIDELOAD=1 NO_FLEX=1'
+        FLEXPATH=''
+        COMPRESSION=9
+    elif [ "$2" == "--dev" ];
     then
         # Cache pre-built FLEX libs
         mkdir -p "packages/cache"
@@ -80,6 +84,10 @@ then
     # Patch IPA for sideloading
     ipapatch --input "packages/SCInsta-sideloaded.ipa" --inplace --noconfirm
 
+    if [ "$2" == "--no-flex" ]; then
+        python3 scripts/verify-no-flex.py packages/SCInsta-sideloaded.ipa
+    fi
+
     echo -e "\033[1m\033[32mDone, we hope you enjoy SCInsta!\033[0m\n\nYou can find the ipa file at: $(pwd)/packages"
 
 elif [ "$1" == "rootless" ];
@@ -116,5 +124,6 @@ else
     echo '+--------------------+'
     echo
     echo 'Usage: ./build.sh <sideload/rootless/rootful>'
+    echo 'Use ./build.sh sideload --no-flex to exclude the FLEX debugger.'
     exit 1
 fi
