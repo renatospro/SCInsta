@@ -44,8 +44,8 @@ with zipfile.ZipFile(sys.argv[1]) as package, zipfile.ZipFile(sys.argv[2]) as ba
     data = package.read(blocker)
     loads = dependencies(data)
     assert loads and all(s.startswith(("/System/Library/", "/usr/lib/")) for s in loads), loads
-    assert len(data) < 100_000, "Unexpected blocker size"
-    for marker in (b"IGSundialFeedDataSource", b"IGFeedScrollableClipsModel", b"CLIPS", b"setScrollEnabled:"):
+    assert len(data) < 200_000, "Unexpected blocker size"
+    for marker in (b"IGMainStoryTrayDataSource", b"IGFeedScrollableClipsModel", b"CLIPS", b"setScrollEnabled:", b"RBSettingsController"):
         assert marker in data, f"Missing restriction: {marker}"
     assert digest(package.read(helper)) == "cd903ea15657cbd356398adcb60c8872c41c29b69acc1a5dfb78a49d6e75dea5", "Sideload helper changed"
     changed = [n for n in sorted(names & originals) if digest(package.read(n)) != digest(base.read(n))]

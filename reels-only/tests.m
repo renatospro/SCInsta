@@ -37,6 +37,20 @@
 
 @interface IGFeedScrollableClipsModel : NSObject @end
 @implementation IGFeedScrollableClipsModel @end
+@interface IGStoryDataController : NSObject @end
+@implementation IGStoryDataController @end
+@interface IGInFeedStoriesTrayModel : NSObject @end
+@implementation IGInFeedStoriesTrayModel @end
+@interface IGMedia : NSObject @end
+@implementation IGMedia @end
+@interface IGPostCreationManager : NSObject @end
+@implementation IGPostCreationManager @end
+@interface IGMainStoryTrayDataSource : NSObject
+- (instancetype)initWithUserSession:(id)session;
+@end
+@implementation IGMainStoryTrayDataSource
+- (instancetype)initWithUserSession:(id)session { return [super init]; }
+@end
 @interface IGMainFeedListAdapterDataSource : NSObject
 - (NSArray *)objectsForListAdapter:(id)adapter;
 @end
@@ -76,6 +90,10 @@
 
 int main(void) {
     @autoreleasepool {
+        NSString *suite = [@"local.reelsblocker.tests." stringByAppendingString:NSUUID.UUID.UUIDString];
+        RBPreferenceStore = [[NSUserDefaults alloc] initWithSuiteName:suite];
+        RBRegisterDefaults();
+        NSCAssert(RBEnabled(RBScrollKey) && !RBEnabled(RBFeedKey) && !RBEnabled(RBStoriesKey), @"Defaults preserve feed and stories");
         // Missing methods and mismatched signatures are left untouched.
         IMP missing = NULL, mismatch = NULL;
         RBHook("DoesNotExist", "missing", (IMP)RBLayout, &missing, "v", @[]);
@@ -86,7 +104,7 @@ int main(void) {
         RBInstall();
         NSCAssert(originalScroll == previous, @"Hooks must be idempotent");
         NSCAssert(originalLayout && originalSurfaces && originalButton && originalFeed &&
-                  originalReels && originalMove && originalScroll && originalAutoScroll && originalRefresh,
+                  originalStoryTray && originalMove && originalScroll && originalAutoScroll,
                   @"Every expected hook must install");
 
         Surface *feed = [Surface new]; feed.name = @"FEED";
@@ -107,10 +125,25 @@ int main(void) {
             initWithSurfaces:surfaces parentViewController:nil enableHaptics:YES launcherSet:nil];
         NSCAssert([coordinator.surfaces isEqual:expected], @"Swipe list must match tab list");
 
-        NSObject *story = [NSObject new], *post = [NSObject new];
+        NSObject *story = [IGStoryDataController new], *post = [IGMedia new];
         NSArray *items = @[story, [IGFeedScrollableClipsModel new], post];
         NSCAssert(([[[IGMainFeedListAdapterDataSource new] objectsForListAdapter:items] isEqual:@[story,post]]), @"Stories and posts survive");
-        NSCAssert([[[IGSundialFeedDataSource new] objectsForListAdapter:items] count] == 0, @"Reels list is empty");
+        NSArray *selectedReels = @[[NSObject new], [NSObject new], [NSObject new]];
+        IGSundialFeedDataSource *reelData = [IGSundialFeedDataSource new];
+        NSCAssert([reelData objectsForListAdapter:selectedReels] == selectedReels, @"Preserve selected Reel, its ordering and native playback data");
+        NSObject *creation = [IGPostCreationManager new], *suggestedStory = [IGInFeedStoriesTrayModel new];
+        NSArray *homeItems = @[story, post, suggestedStory, creation, [NSObject new]];
+        IGMainFeedListAdapterDataSource *home = [IGMainFeedListAdapterDataSource new];
+        [RBDefaults() setBool:YES forKey:RBFeedKey];
+        NSCAssert(([[home objectsForListAdapter:homeItems] isEqual:@[story,suggestedStory,creation]]), @"Hide home feed but preserve stories and creation entry");
+        [RBDefaults() setBool:YES forKey:RBStoriesKey];
+        NSCAssert(([[home objectsForListAdapter:homeItems] isEqual:@[creation]]), @"Both home restrictions are independent of creation");
+        NSCAssert(![[IGMainStoryTrayDataSource alloc] initWithUserSession:nil], @"Hidden story tray is not created");
+        NSCAssert([reelData objectsForListAdapter:selectedReels] == selectedReels, @"Home restrictions never delete the chosen Reel");
+        [RBDefaults() setBool:NO forKey:RBFeedKey];
+        NSCAssert([[home objectsForListAdapter:homeItems] count] == 3, @"Stories can be hidden while posts remain");
+        [RBDefaults() setBool:NO forKey:RBStoriesKey];
+        NSCAssert([[IGMainStoryTrayDataSource alloc] initWithUserSession:nil] != nil, @"Story tray returns when enabled");
         IGUnifiedVideoCollectionView *viewer = [IGUnifiedVideoCollectionView new];
         viewer.scrollEnabled = YES;
         [viewer didMoveToWindow];
@@ -124,8 +157,17 @@ int main(void) {
         IGSundialFeedViewController *controller = [IGSundialFeedViewController new];
         controller->_refreshControl = [NSObject new];
         [controller _refreshReelsWithParamsForNetworkRequest:1 userDidPullToRefresh:YES];
-        NSCAssert(!controller.requests && controller.finished == controller->_refreshControl, @"Do not refresh Reels; finish indicator");
-        puts("PASS: nine hooks; tab/swipe filtering, non-Reels preservation, empty Reels, scrolling, refresh, signature guards and idempotence");
+        NSCAssert(controller.requests == 1 && !controller.finished, @"Native Reel loading and refresh remain untouched");
+        [RBDefaults() setBool:NO forKey:RBScrollKey];
+        NSCAssert(RBFilterSurfaces(surfaces) == surfaces, @"Disabling Reels restriction preserves tab surfaces");
+        NSCAssert([tabs _buttonForTabBarSurface:reels] == reels, @"Reels button returns when unlocked");
+        viewer.scrollEnabled = YES; [viewer didMoveToWindow]; autoScroll.isEnabled = YES;
+        NSCAssert(viewer.scrollEnabled && autoScroll.isEnabled, @"Unlock restores Instagram's scrolling decisions");
+        viewer.scrollEnabled = NO;
+        NSCAssert(!viewer.scrollEnabled, @"Unlock must not force scrolling on when Instagram disables it");
+        NSCAssert([[home objectsForListAdapter:items] isEqual:items], @"All home items remain when restrictions are off");
+        [RBPreferenceStore removePersistentDomainForName:suite];
+        puts("PASS: eight hooks; direct Reel data preserved, scroll locking and unlocking, independent feed/story options, creation preservation, native refresh, signature guards and idempotence");
     }
     return 0;
 }

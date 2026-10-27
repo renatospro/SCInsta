@@ -1,39 +1,21 @@
-name: Build minimal Reels blocker
+name: Build playback and local controls
 on:
   workflow_dispatch:
-    inputs:
-      decrypted_instagram_url:
-        description: "Instagram 418.2.0 IPA matching the pinned SHA-256"
-        required: true
-        type: string
-concurrency:
-  group: reels-only-${{ github.ref }}
-  cancel-in-progress: true
 jobs:
   build:
     runs-on: macos-latest
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
-      - name: Test restrictions against mock classes
+      - name: Test independent controls and selected Reel preservation
         run: |
           xcrun clang -fobjc-arc -O2 -Wall -Wextra -Werror -Wno-unused-parameter \
             -framework Foundation reels-only/tests.m -o "$RUNNER_TEMP/reels-tests"
           "$RUNNER_TEMP/reels-tests"
-      - name: Download and verify original Instagram IPA
-        env:
-          INSTAGRAM_URL: ${{ inputs.decrypted_instagram_url }}
+      - name: Compile blocker and UIKit settings
         run: |
           mkdir -p packages
-          curl --fail --location "$INSTAGRAM_URL" -o packages/Instagram.ipa
-          python3 - <<'PY'
-          import hashlib
-          from pathlib import Path
-          assert hashlib.sha256(Path('packages/Instagram.ipa').read_bytes()).hexdigest() == '28577f6827a2978aba118fb2a99bf56ea9436001cf4c7829cf301fb0ac1ca39b', 'Source IPA changed'
-          PY
-      - name: Compile only the blocker with Apple frameworks
-        run: |
           xcrun --sdk iphoneos clang -target arm64-apple-ios16.3 \
             -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" \
             -dynamiclib -fobjc-arc -O2 -Wall -Wextra -Werror -Wno-unused-parameter \
@@ -41,30 +23,9 @@ jobs:
             -install_name @rpath/ReelsBlocker.dylib \
             reels-only/ReelsBlocker.m -o packages/ReelsBlocker.dylib
           otool -L packages/ReelsBlocker.dylib
-      - name: Install pinned packaging tools on the runner
-        run: |
-          python3 -m venv "$RUNNER_TEMP/packaging-venv"
-          "$RUNNER_TEMP/packaging-venv/bin/pip" install https://github.com/asdfzxcvbn/pyzule-rw/archive/740d3716dcd98c20c000f12cdb88f1f0b2a533a4.zip
-          echo "$RUNNER_TEMP/packaging-venv/bin" >> "$GITHUB_PATH"
-          curl --fail --location https://github.com/asdfzxcvbn/ipapatch/releases/download/v2.1.3/ipapatch.macos-arm64 -o "$RUNNER_TEMP/ipapatch"
-          python3 - <<'PY'
-          import hashlib, os
-          from pathlib import Path
-          assert hashlib.sha256((Path(os.environ['RUNNER_TEMP'])/'ipapatch').read_bytes()).hexdigest() == '05df2e7310b041891892cf152ce6bbd93574880bf147b96d775051fad796737f', 'ipapatch changed'
-          PY
-          chmod +x "$RUNNER_TEMP/ipapatch"
-      - name: Package and verify
-        run: |
-          cyan -i packages/Instagram.ipa -o packages/Instagram_ReelsOnly_418.2.0_v1.ipa \
-            -f packages/ReelsBlocker.dylib -c 9
-          "$RUNNER_TEMP/ipapatch" --input packages/Instagram_ReelsOnly_418.2.0_v1.ipa --inplace --noconfirm
-          python3 reels-only/verify.py packages/Instagram_ReelsOnly_418.2.0_v1.ipa packages/Instagram.ipa > packages/verification.json
-          cat packages/verification.json
-      - name: Save a separate draft release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "reels-only-v1-${GITHUB_RUN_ID}" --draft --target "$GITHUB_SHA" \
-            --title "Instagram Reels-only v1" \
-            --notes "Minimal Reels blocker. No SCInsta, FLEX or CydiaSubstrate. Static checks and mock tests passed; device testing and malware assessment are separate." \
-            packages/Instagram_ReelsOnly_418.2.0_v1.ipa packages/ReelsBlocker.dylib packages/verification.json
+          shasum -a 256 packages/ReelsBlocker.dylib
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ReelsBlocker-v2-source-build
+          path: packages/ReelsBlocker.dylib
+          if-no-files-found: error

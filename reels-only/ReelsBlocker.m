@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Instagram 418.2.0 selectors identified by SoCuul/SCInsta.
-// Only local Reels UI/data restrictions; no settings, networking or file access.
+// Private Instagram selectors originally identified by SoCuul/SCInsta.
+// Local UI restrictions and preferences only; no networking or account access.
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
@@ -10,7 +10,27 @@
 
 static IMP originalLayout, originalButton, originalSurfaces, originalFeed;
 static IMP originalMove, originalScroll, originalAutoScroll;
-static IMP originalReels, originalRefresh;
+static IMP originalStoryTray;
+
+static NSString *const RBScrollKey = @"local.reelsblocker.blockScroll";
+static NSString *const RBFeedKey = @"local.reelsblocker.hideHomeFeed";
+static NSString *const RBStoriesKey = @"local.reelsblocker.hideHomeStories";
+static NSUserDefaults *RBPreferenceStore;
+
+static NSUserDefaults *RBDefaults(void) {
+    return RBPreferenceStore ?: NSUserDefaults.standardUserDefaults;
+}
+
+static void RBRegisterDefaults(void) {
+    [RBDefaults() registerDefaults:@{RBScrollKey:@YES, RBFeedKey:@NO, RBStoriesKey:@NO}];
+}
+
+static BOOL RBEnabled(NSString *key) { return [RBDefaults() boolForKey:key]; }
+
+static BOOL RBIsKind(id object, const char *name) {
+    Class cls = objc_getClass(name);
+    return cls && [object isKindOfClass:cls];
+}
 
 static BOOL RBIsReelsSurface(id surface) {
     SEL selector = sel_registerName("tabStringFromSurfaceIntent");
@@ -20,6 +40,7 @@ static BOOL RBIsReelsSurface(id surface) {
 }
 
 static id RBFilterSurfaces(id value) {
+    if (!RBEnabled(RBScrollKey)) return value;
     if (![value isKindOfClass:NSArray.class]) return value;
     NSMutableArray *result = [NSMutableArray array];
     for (id surface in value) {
@@ -52,50 +73,48 @@ static void RBLayout(id self, SEL command) {
 }
 
 static id RBButton(id self, SEL command, id surface) {
-    if (RBIsReelsSurface(surface)) return nil;
+    if (RBEnabled(RBScrollKey) && RBIsReelsSurface(surface)) return nil;
     return ((id (*)(id, SEL, id))originalButton)(self, command, surface);
 }
 
 static id RBFeed(id self, SEL command, id adapter) {
     id value = ((id (*)(id, SEL, id))originalFeed)(self, command, adapter);
-    Class carousel = objc_getClass("IGFeedScrollableClipsModel");
-    if (!carousel || ![value isKindOfClass:NSArray.class]) return value;
+    // Never remove the selected Reel or reorder its playback data source.
+    if (RBIsKind(self, "IGSundialFeedDataSource") || ![value isKindOfClass:NSArray.class]) return value;
     NSMutableArray *result = [NSMutableArray array];
     for (id item in value) {
-        if (![item isKindOfClass:carousel]) [result addObject:item];
+        BOOL stories = RBIsKind(item, "IGStoryDataController") || RBIsKind(item, "IGInFeedStoriesTrayModel");
+        if (RBEnabled(RBStoriesKey) && stories) continue;
+        if (RBEnabled(RBFeedKey) && !stories && !RBIsKind(item, "IGPostCreationManager")) continue;
+        if (RBEnabled(RBScrollKey) && RBIsKind(item, "IGFeedScrollableClipsModel")) continue;
+        [result addObject:item];
     }
     return [result copy];
 }
 
-static id RBReels(id self, SEL command, id adapter) {
-    // Empty only the Reels data source, including Reels opened from a DM.
-    return @[];
+typedef id (*RBStoryInitFunction)(__attribute__((ns_consumed)) id, SEL, id)
+    __attribute__((ns_returns_retained));
+static id RBStoryTray(__attribute__((ns_consumed)) id self, SEL command, id session)
+    __attribute__((ns_returns_retained));
+static id RBStoryTray(__attribute__((ns_consumed)) id self, SEL command, id session) {
+    if (RBEnabled(RBStoriesKey)) return nil;
+    return ((RBStoryInitFunction)originalStoryTray)(self, command, session);
 }
 
 static void RBScroll(id self, SEL command, BOOL enabled) {
-    ((void (*)(id, SEL, BOOL))originalScroll)(self, command, NO);
+    ((void (*)(id, SEL, BOOL))originalScroll)(self, command, RBEnabled(RBScrollKey) ? NO : enabled);
 }
 
 static void RBMove(id self, SEL command) {
     ((void (*)(id, SEL))originalMove)(self, command);
     SEL setter = sel_registerName("setScrollEnabled:");
-    if ([self respondsToSelector:setter]) {
+    if (RBEnabled(RBScrollKey) && [self respondsToSelector:setter]) {
         ((void (*)(id, SEL, BOOL))objc_msgSend)(self, setter, NO);
     }
 }
 
 static void RBAutoScroll(id self, SEL command, BOOL enabled) {
-    ((void (*)(id, SEL, BOOL))originalAutoScroll)(self, command, NO);
-}
-
-static void RBRefresh(id self, SEL command, NSInteger reason, BOOL pulled) {
-    // Do not request another page of Reels. End the existing refresh indicator.
-    SEL finish = sel_registerName("refreshControlDidEndFinishLoadingAnimation:");
-    Ivar ivar = class_getInstanceVariable(object_getClass(self), "_refreshControl");
-    const char *type = ivar ? ivar_getTypeEncoding(ivar) : NULL;
-    if ([self respondsToSelector:finish] && type && type[0] == '@') {
-        ((void (*)(id, SEL, id))objc_msgSend)(self, finish, object_getIvar(self, ivar));
-    }
+    ((void (*)(id, SEL, BOOL))originalAutoScroll)(self, command, RBEnabled(RBScrollKey) ? NO : enabled);
 }
 
 static BOOL RBTypeMatches(char *actual, const char *expected) {
@@ -129,20 +148,21 @@ static void RBInstall(void) {
     RBHook("IGTabBarControllerSwipeCoordinator", "initWithSurfaces:parentViewController:enableHaptics:launcherSet:",
            (IMP)RBSurfaces, &originalSurfaces, "@", @[@"@", @"@", @(@encode(BOOL)), @"@"]);
     RBHook("IGMainFeedListAdapterDataSource", "objectsForListAdapter:", (IMP)RBFeed, &originalFeed, "@", @[@"@"]);
-    RBHook("IGSundialFeedDataSource", "objectsForListAdapter:", (IMP)RBReels, &originalReels, "@", @[@"@"]);
+    RBHook("IGMainStoryTrayDataSource", "initWithUserSession:", (IMP)RBStoryTray, &originalStoryTray, "@", @[@"@"]);
     RBHook("IGUnifiedVideoCollectionView", "didMoveToWindow", (IMP)RBMove, &originalMove, "v", @[]);
     RBHook("IGUnifiedVideoCollectionView", "setScrollEnabled:", (IMP)RBScroll, &originalScroll, "v", @[@(@encode(BOOL))]);
     RBHook("_TtC19IGSundialAutoScroll19IGSundialAutoScroll", "setIsEnabled:",
            (IMP)RBAutoScroll, &originalAutoScroll, "v", @[@(@encode(BOOL))]);
-    RBHook("IGSundialFeedViewController", "_refreshReelsWithParamsForNetworkRequest:userDidPullToRefresh:",
-           (IMP)RBRefresh, &originalRefresh, "v", @[@(@encode(NSInteger)), @(@encode(BOOL))]);
 }
 
 #if !RB_TESTING
+#import "BlockerSettings.m"
 __attribute__((constructor)) static void RBStart(void) {
     @autoreleasepool {
         if (![NSBundle.mainBundle.bundleIdentifier hasPrefix:@"com.burbn.instagram"]) return;
+        RBRegisterDefaults();
         RBInstall();
+        RBInstallSettings();
         [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidFinishLaunchingNotification
             object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
                 RBInstall();
