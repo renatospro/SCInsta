@@ -14,6 +14,7 @@ $(TWEAK_NAME)_LOGOSFLAGS = --c warnings=none
 
 ifeq ($(NO_FLEX),1)
 $(TWEAK_NAME)_CFLAGS += -DSCI_NO_FLEX=1
+$(TWEAK_NAME)_FILES := $(filter-out src/Features/Debug/FlexExplorer.x,$($(TWEAK_NAME)_FILES))
 endif
 
 CCFLAGS += -std=c++11
