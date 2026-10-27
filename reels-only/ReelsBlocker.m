@@ -10,7 +10,7 @@
 
 static IMP originalLayout, originalButton, originalSurfaces, originalFeed;
 static IMP originalMove, originalScroll, originalAutoScroll;
-static IMP originalStoryTray;
+static IMP originalHideStories;
 static IMP originalScrollStatus, originalAutoStatus;
 
 static NSString *const RBScrollKey = @"local.reelsblocker.blockScroll";
@@ -103,13 +103,8 @@ static id RBFeed(id self, SEL command, id adapter) {
     return [result copy];
 }
 
-typedef id (*RBStoryInitFunction)(__attribute__((ns_consumed)) id, SEL, id)
-    __attribute__((ns_returns_retained));
-static id RBStoryTray(__attribute__((ns_consumed)) id self, SEL command, id session)
-    __attribute__((ns_returns_retained));
-static id RBStoryTray(__attribute__((ns_consumed)) id self, SEL command, id session) {
-    if (RBEnabled(RBStoriesKey)) return nil;
-    return ((RBStoryInitFunction)originalStoryTray)(self, command, session);
+static BOOL RBHideStories(id self, SEL command) {
+    return RBEnabled(RBStoriesKey) ? YES : ((BOOL (*)(id, SEL))originalHideStories)(self, command);
 }
 
 static void RBScroll(id self, SEL command, BOOL enabled) {
@@ -167,7 +162,7 @@ static void RBInstall(void) {
     RBHook("IGTabBarControllerSwipeCoordinator", "initWithSurfaces:parentViewController:enableHaptics:launcherSet:",
            (IMP)RBSurfaces, &originalSurfaces, "@", @[@"@", @"@", @(@encode(BOOL)), @"@"]);
     RBHook("IGMainFeedListAdapterDataSource", "objectsForListAdapter:", (IMP)RBFeed, &originalFeed, "@", @[@"@"]);
-    RBHook("IGMainStoryTrayDataSource", "initWithUserSession:", (IMP)RBStoryTray, &originalStoryTray, "@", @[@"@"]);
+    RBHook("IGMainFeedListAdapterDataSource", "hideStoriesTray", (IMP)RBHideStories, &originalHideStories, @encode(BOOL), @[]);
     RBHook("IGUnifiedVideoCollectionView", "didMoveToWindow", (IMP)RBMove, &originalMove, "v", @[]);
     RBHook("IGUnifiedVideoCollectionView", "setScrollEnabled:", (IMP)RBScroll, &originalScroll, "v", @[@(@encode(BOOL))]);
     RBHook("IGUnifiedVideoCollectionView", "isScrollEnabled", (IMP)RBScrollStatus, &originalScrollStatus, @encode(BOOL), @[]);

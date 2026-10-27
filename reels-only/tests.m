@@ -58,6 +58,7 @@
 - (instancetype)initWithUserSession:(id)session { return [super init]; }
 @end
 @interface IGMainFeedListAdapterDataSource : NSObject
+@property BOOL hideStoriesTray;
 - (NSArray *)objectsForListAdapter:(id)adapter;
 @end
 @implementation IGMainFeedListAdapterDataSource
@@ -114,7 +115,7 @@ int main(void) {
         RBInstall();
         NSCAssert(originalScroll == previous, @"Hooks must be idempotent");
         NSCAssert(originalLayout && originalSurfaces && originalButton && originalFeed &&
-                  originalStoryTray && originalMove && originalScroll && originalAutoScroll &&
+                  originalHideStories && originalMove && originalScroll && originalAutoScroll &&
                   originalScrollStatus && originalAutoStatus,
                   @"Every expected hook must install");
 
@@ -149,12 +150,15 @@ int main(void) {
         NSCAssert(([[home objectsForListAdapter:homeItems] isEqual:@[story,suggestedStory,creation]]), @"Hide home feed but preserve stories and creation entry");
         [RBDefaults() setBool:YES forKey:RBStoriesKey];
         NSCAssert(([[home objectsForListAdapter:homeItems] isEqual:@[creation]]), @"Both home restrictions are independent of creation");
-        NSCAssert(![[IGMainStoryTrayDataSource alloc] initWithUserSession:nil], @"Hidden story tray is not created");
+        NSCAssert(home.hideStoriesTray, @"Native home story visibility is disabled without returning nil from a Swift initializer");
         NSCAssert([reelData objectsForListAdapter:selectedReels] == selectedReels, @"Home restrictions never delete the chosen Reel");
         [RBDefaults() setBool:NO forKey:RBFeedKey];
         NSCAssert([[home objectsForListAdapter:homeItems] count] == 3, @"Stories can be hidden while posts remain");
         [RBDefaults() setBool:NO forKey:RBStoriesKey];
-        NSCAssert([[IGMainStoryTrayDataSource alloc] initWithUserSession:nil] != nil, @"Story tray returns when enabled");
+        NSCAssert(!home.hideStoriesTray, @"Native story visibility returns when the option is disabled");
+        home.hideStoriesTray = YES;
+        NSCAssert(home.hideStoriesTray, @"Instagram can still hide its own tray when our option is off");
+        home.hideStoriesTray = NO;
         IGUnifiedVideoCollectionView *viewer = [IGUnifiedVideoCollectionView new];
         viewer.scrollEnabled = YES;
         [viewer didMoveToWindow];
