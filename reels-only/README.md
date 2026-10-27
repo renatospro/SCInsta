@@ -21,9 +21,13 @@ the application's local defaults. No account, purchase, subscription, network,
 keychain, downloading, or analytics code is added by this blocker. Instagram Plus
 eligibility and purchases are left entirely to Instagram.
 
-The selectors originate in SCInsta and were confirmed in Instagram 418.2.0 for
-v1. A newer Instagram IPA must be checked for compatible methods and tested on a
-device before claiming this v2 works there. Mock tests validate our behavior,
+The selectors originate in SCInsta. The 451.0.0 metadata review confirmed the
+tab and feed methods and exposed Swift runtime names for the Reel data source
+and suggested-story model. This version supports those names, the new
+`setUserEnabled:` auto-scroll setter, and the native `hideStoriesTray` getter.
+It does not return nil from a Swift story-tray initializer. Scroll status
+getters also respect the restriction. A device test is still required before
+claiming this v2 works there. Mock tests validate our behavior,
 not Instagram's private interfaces, every navigation route, or subscription
 compatibility. A source-only build is not an installable IPA or an antivirus scan.
 
